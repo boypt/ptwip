@@ -1,16 +1,14 @@
 <?php
-define('PHPBASE', dirname(__FILE__));
-require PHPBASE.'/lib/Slim/Slim.php';
-require_once PHPBASE.'/lib/curl.php';
-require_once PHPBASE.'/lib/curl_response.php';
+require_once 'config.php';
+require_once PHPBASE.'/lib/Slim/Slim.php';
 require_once PHPBASE.'/ptwip.class.php';
 
 \Slim\Slim::registerAutoloader();
 
 
-//\Slim\Route::setDefaultConditions(array(
-//    'req+' => '[a-z0-9.]{1,}'
-//));
+\Slim\Route::setDefaultConditions(array(
+    //'req' => '[\w\./]+'
+));
 
 // Set the current mode
 $app = new \Slim\Slim(array(
@@ -32,22 +30,33 @@ $app->configureMode('development', function () use ($app) {
         'log.level' => \Slim\Log::DEBUG,
         'log.enabled' => true
     ));
+    $app->hook('slim.before.router', function () use ($app) {
+        if ( substr( @$_SERVER['SERVER_SOFTWARE'], 0, 3 ) === "PHP" ){
+            $env = $app->environment();
+            if($env['PATH_INFO'] === '/' && $env['SCRIPT_NAME'] !== basename(__FILE__)) {
+                $env['PATH_INFO'] = $env['SCRIPT_NAME'];
+            }
+        }
+    });
 });
 
 $app->get('/info', function() {
     phpinfo();
 });
 
-$app->map('/foo/bar', function() use ($app) {
-    echo "I respond to multiple HTTP methods!";
-})->via('GET', 'POST');
-
-
 $app->map('/t/:req+', function($req) use ($app) {
     $pt = new PTwip($req, $app);
-    echo $pt->t_mode_transfer();
-    echo "\n";
-})->via('GET', 'POST');
+    $api_resp = $pt->t_mode_transfer();
+
+    // copy remote response to custom
+    if($api_resp !== null) {
+        $resp = $app->response();
+        $resp->status((int)$api_resp->status['code']);
+        foreach($api_resp->headers as $k => $v) $resp[$k] = $v;
+        $resp->setBody($api_resp->body);
+    }
+
+})->via('GET', 'POST', 'DELETE');
 
 $app->run();
 ?>
