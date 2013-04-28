@@ -1,84 +1,88 @@
 <?php
 require_once 'config.php';
-require_once PHPBASE.'/lib/curl.php';
-require_once PHPBASE.'/lib/curl_response.php';
+require_once PHPBASE.'/lib/pt_curl.php';
 
-require_once('Log.php');
 
 
 class PTwip {
 
     const PARENT_API = 'https://api.twitter.com/';
+    const PARENT_HOST = 'api.twitter.com';
 
-    private $forward_headers = array(
-            'User-Agent',
-            'Authorization',
-            'Content-Type',
-            'X-Forwarded-For',
-            'Expect',
-        );
+    private $forward_headers_keys = array( 'USER-AGENT', 'AUTHORIZATION', 'CONTENT_TYPE', 'EXPECT'); 
+    private $forward_headers = array('HOST' => self::PARENT_HOST, 'EXPECT' => '');
 
-    private $transmit_headers = array();
-    private $transmit_params = null;
+    function __construct($method, $resource, $headers, $params) {
 
-    function __construct($resc, &$app) {
-        assert(is_array($resc));
-        $this->resc = $resc;
-        $this->app = $app;
-        $this->log = \Log::factory('file', '/tmp/ptwip.log', 'Slim');
-        if(preg_match('/^[0-9\.]{1,3}$/', $resc[0]) === 1 || $resc[0] === 'oauth') {
-            $this->api_ver = array_shift($resc);
-        } else {
-            $this->api_ver = API_VERSION;
-        }
+        $this->method = $method;
+        $this->resource = $resource;
+        $this->headers = $headers;
+        $this->params = $params;
 
-        $this->api_url = self::PARENT_API . $this->api_ver . '/' . implode('/', $resc);
+        if(in_array($resource[0], array("1.1", "1", "oauth")))
+            $this->api_ver = array_shift($resource);
+        else $this->api_ver = API_VERSION;
+
+        $this->api_url = self::PARENT_API . $this->api_ver . '/' . implode('/', $resource);
+
+        global $log;
+        $log->debug("ptwip class init: ".print_r($this, true));
     }
 
-    private function twitter_api_parse() {
+    private function proccess_media_upload_request() {
+        if(strpos(end($this->resource), 'update_with_media') !== false &&
+            strpos(@$this->headers['CONTENT_TYPE'], 'multipart/form-data') !== false &&
+            $this->method === 'POST' &&
+            count($_FILES) > 0 ) {
+
+            $media = @$_FILES['media'];
+            if(is_array($media['tmp_name'])) $fn = $media['tmp_name'][0];
+            else $fn = $media['tmp_name'];
+
+            $this->params["media"] = '@' . $fn;
+            unset($forward_hdr['CONTENT_TYPE']);
+            $this->method = 'POST_UPLOAD';
+        }
     }
 
     public function t_mode_transfer() {
 
-        $l = $this->log;
-
-        $req = $this->app->request();
-        $req_hdr = $req->headers();
-
-        $forward_hdr = array();
-        foreach($this->forward_headers as $h) {
-            if($req_hdr->has($h))
-                $forward_hdr[$h] = $req_hdr[$h];
+        foreach($this->forward_headers_keys as $h) {
+            if(array_key_exists($h, $this->headers))
+                $this->forward_headers[$h] = $this->headers[$h];
         }
 
-        $forward_hdr['Expect'] = '';
-        $forward_hdr['Host'] = 'api.twitter.com';
+        $this->proccess_media_upload_request();
+        $this->curl = $curl = new PTCurl(
+            $this->api_url,
+            $this->params,
+            $this->forward_headers);
 
-        $this->curl = $curl = new Curl();
-        $curl->headers = $forward_hdr;
-
-        //$curl->options = array('CURLOPT_HTTPPROXYTUNNEL' => true, 'CURLOPT_PROXY' => '192.168.0.197:8124');
-        $curl->options = array('CURLOPT_TIMEOUT' => 10);
-
-        if(strpos(end($this->resc), 'update_with_media') !== false) {
-            die();
-        }
-
-        switch($req->getMethod()) {
+        switch($this->method) {
             case 'POST':
-                $this->resp = $curl->post($this->api_url, $req->params());
+                $resp = $curl->http_post();
+                break;
+            case 'POST_UPLOAD':
+                $resp = $curl->http_upload();
                 break;
             case 'GET':
-                $this->resp = $curl->get($this->api_url, $req->params());
-                break;
-            case 'DELETE':
-                $this->resp = $curl->delete($this->api_url, $req->params());
+                $resp = $curl->http_get();
                 break;
             default:
-                break;
+                return false;
         }
 
-        return $this->resp;
+        $this->response_info = $curl->response_info;
+        $this->response_body = $curl->response_body;
+
+        $hdr = $curl->response_headers;
+        if(!is_array($hdr) || count($hdr) === 0) 
+            $hdr = array();
+
+        $this->response_headers = $hdr;
+        global $log;
+        $log->debug("ptwip t_mode_transfer end: \n" . print_r($this, true));
+        return $resp;
     }
 }
 
