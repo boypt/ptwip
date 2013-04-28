@@ -2,7 +2,7 @@
 require_once 'config.php';
 require_once PHPBASE.'/lib/Slim/Slim.php';
 require_once PHPBASE.'/lib/Slim/DateTimeFileWriter.php';
-require_once PHPBASE.'/ptwip.class.php';
+require_once PHPBASE.'/lib/ptwip.class.php';
 
 \Slim\Slim::registerAutoloader();
 
