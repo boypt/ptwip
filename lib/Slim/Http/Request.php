@@ -58,34 +58,18 @@ class Request
     protected static $formDataMediaTypes = array('application/x-www-form-urlencoded');
 
     /**
-     * Application Environment
-     * @var \Slim\Environment
+     * @var array
      */
     protected $env;
-
-    /**
-     * HTTP Headers
-     * @var \Slim\Http\Headers
-     */
-    public $headers;
-
-    /**
-     * HTTP Cookies
-     * @var \Slim\Helper\Set
-     */
-    public $cookies;
 
     /**
      * Constructor
      * @param array $env
      * @see   \Slim\Environment
      */
-
-    public function __construct(\Slim\Environment $env)
+    public function __construct($env)
     {
         $this->env = $env;
-        $this->headers = new \Slim\Http\Headers(\Slim\Http\Headers::extract($env));
-        $this->cookies = new \Slim\Helper\Set(\Slim\Http\Util::parseCookieHeader($env['HTTP_COOKIE']));
     }
 
     /**
@@ -159,7 +143,7 @@ class Request
     {
         if ($this->params('isajax')) {
             return true;
-        } elseif (isset($this->headers['X_REQUESTED_WITH']) && $this->headers['X_REQUESTED_WITH'] === 'XMLHttpRequest') {
+        } elseif (isset($this->env['X_REQUESTED_WITH']) && $this->env['X_REQUESTED_WITH'] === 'XMLHttpRequest') {
             return true;
         } else {
             return false;
@@ -188,10 +172,14 @@ class Request
     {
         $union = array_merge($this->get(), $this->post());
         if ($key) {
-            return isset($union[$key]) ? $union[$key] : null;
+            if (isset($union[$key])) {
+                return $union[$key];
+            } else {
+                return null;
+            }
+        } else {
+            return $union;
         }
-
-        return $union;
     }
 
     /**
@@ -296,24 +284,19 @@ class Request
      */
     public function cookies($key = null)
     {
-        if ($key) {
-            return $this->cookies->get($key);
+        if (!isset($this->env['slim.request.cookie_hash'])) {
+            $cookieHeader = isset($this->env['COOKIE']) ? $this->env['COOKIE'] : '';
+            $this->env['slim.request.cookie_hash'] = Util::parseCookieHeader($cookieHeader);
         }
-
-        return $this->cookies;
-        // if (!isset($this->env['slim.request.cookie_hash'])) {
-        //     $cookieHeader = isset($this->env['COOKIE']) ? $this->env['COOKIE'] : '';
-        //     $this->env['slim.request.cookie_hash'] = Util::parseCookieHeader($cookieHeader);
-        // }
-        // if ($key) {
-        //     if (isset($this->env['slim.request.cookie_hash'][$key])) {
-        //         return $this->env['slim.request.cookie_hash'][$key];
-        //     } else {
-        //         return null;
-        //     }
-        // } else {
-        //     return $this->env['slim.request.cookie_hash'];
-        // }
+        if ($key) {
+            if (isset($this->env['slim.request.cookie_hash'][$key])) {
+                return $this->env['slim.request.cookie_hash'][$key];
+            } else {
+                return null;
+            }
+        } else {
+            return $this->env['slim.request.cookie_hash'];
+        }
     }
 
     /**
@@ -340,29 +323,24 @@ class Request
     public function headers($key = null, $default = null)
     {
         if ($key) {
-            return $this->headers->get($key, $default);
-        }
+            $key = strtoupper($key);
+            $key = str_replace('-', '_', $key);
+            $key = preg_replace('@^HTTP_@', '', $key);
+            if (isset($this->env[$key])) {
+                return $this->env[$key];
+            } else {
+                return $default;
+            }
+        } else {
+            $headers = array();
+            foreach ($this->env as $key => $value) {
+                if (strpos($key, 'slim.') !== 0) {
+                    $headers[$key] = $value;
+                }
+            }
 
-        return $this->headers;
-        // if ($key) {
-        //     $key = strtoupper($key);
-        //     $key = str_replace('-', '_', $key);
-        //     $key = preg_replace('@^HTTP_@', '', $key);
-        //     if (isset($this->env[$key])) {
-        //         return $this->env[$key];
-        //     } else {
-        //         return $default;
-        //     }
-        // } else {
-        //     $headers = array();
-        //     foreach ($this->env as $key => $value) {
-        //         if (strpos($key, 'slim.') !== 0) {
-        //             $headers[$key] = $value;
-        //         }
-        //     }
-        //
-        //     return $headers;
-        // }
+            return $headers;
+        }
     }
 
     /**
@@ -376,11 +354,15 @@ class Request
 
     /**
      * Get Content Type
-     * @return string|null
+     * @return string
      */
     public function getContentType()
     {
-        return $this->headers->get('CONTENT_TYPE');
+        if (isset($this->env['CONTENT_TYPE'])) {
+            return $this->env['CONTENT_TYPE'];
+        } else {
+            return null;
+        }
     }
 
     /**
@@ -394,9 +376,9 @@ class Request
             $contentTypeParts = preg_split('/\s*[;,]\s*/', $contentType);
 
             return strtolower($contentTypeParts[0]);
+        } else {
+            return null;
         }
-
-        return null;
     }
 
     /**
@@ -428,9 +410,9 @@ class Request
         $mediaTypeParams = $this->getMediaTypeParams();
         if (isset($mediaTypeParams['charset'])) {
             return $mediaTypeParams['charset'];
+        } else {
+            return null;
         }
-
-        return null;
     }
 
     /**
@@ -439,7 +421,11 @@ class Request
      */
     public function getContentLength()
     {
-        return $this->headers->get('CONTENT_LENGTH', 0);
+        if (isset($this->env['CONTENT_LENGTH'])) {
+            return (int) $this->env['CONTENT_LENGTH'];
+        } else {
+            return 0;
+        }
     }
 
     /**
@@ -448,17 +434,17 @@ class Request
      */
     public function getHost()
     {
-        if (isset($this->env['HTTP_HOST'])) {
-            if (strpos($this->env['HTTP_HOST'], ':') !== false) {
-                $hostParts = explode(':', $this->env['HTTP_HOST']);
+        if (isset($this->env['HOST'])) {
+            if (strpos($this->env['HOST'], ':') !== false) {
+                $hostParts = explode(':', $this->env['HOST']);
 
                 return $hostParts[0];
             }
 
-            return $this->env['HTTP_HOST'];
+            return $this->env['HOST'];
+        } else {
+            return $this->env['SERVER_NAME'];
         }
-
-        return $this->env['SERVER_NAME'];
     }
 
     /**
@@ -476,7 +462,7 @@ class Request
      */
     public function getPort()
     {
-        return (int)$this->env['SERVER_PORT'];
+        return (int) $this->env['SERVER_PORT'];
     }
 
     /**
@@ -568,7 +554,11 @@ class Request
      */
     public function getReferrer()
     {
-        return $this->headers->get('HTTP_REFERER');
+        if (isset($this->env['REFERER'])) {
+            return $this->env['REFERER'];
+        } else {
+            return null;
+        }
     }
 
     /**
@@ -586,6 +576,10 @@ class Request
      */
     public function getUserAgent()
     {
-        return $this->headers->get('HTTP_USER_AGENT');
+        if (isset($this->env['USER_AGENT'])) {
+            return $this->env['USER_AGENT'];
+        } else {
+            return null;
+        }
     }
 }

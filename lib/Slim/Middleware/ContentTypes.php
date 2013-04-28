@@ -58,13 +58,12 @@ class ContentTypes extends \Slim\Middleware
      */
     public function __construct($settings = array())
     {
-        $defaults = array(
+        $this->contentTypes = array_merge(array(
             'application/json' => array($this, 'parseJson'),
             'application/xml' => array($this, 'parseXml'),
             'text/xml' => array($this, 'parseXml'),
             'text/csv' => array($this, 'parseCsv')
-        );
-        $this->contentTypes = array_merge($defaults, $settings);
+        ), $settings);
     }
 
     /**

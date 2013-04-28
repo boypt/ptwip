@@ -58,7 +58,7 @@ class Util
     {
         $strip = is_null($overrideStripSlashes) ? get_magic_quotes_gpc() : $overrideStripSlashes;
         if ($strip) {
-            return self::stripSlashes($rawData);
+            return self::_stripSlashes($rawData);
         } else {
             return $rawData;
         }
@@ -69,9 +69,9 @@ class Util
      * @param  array|string $rawData
      * @return array|string
      */
-    protected static function stripSlashes($rawData)
+    protected static function _stripSlashes($rawData)
     {
-        return is_array($rawData) ? array_map(array('self', 'stripSlashes'), $rawData) : stripslashes($rawData);
+        return is_array($rawData) ? array_map(array('self', '_stripSlashes'), $rawData) : stripslashes($rawData);
     }
 
     /**
@@ -95,11 +95,10 @@ class Util
         }
 
         //Merge settings with defaults
-        $defaults = array(
+        $settings = array_merge(array(
             'algorithm' => MCRYPT_RIJNDAEL_256,
             'mode' => MCRYPT_MODE_CBC
-        );
-        $settings = array_merge($defaults, $settings);
+        ), $settings);
 
         //Get module
         $module = mcrypt_module_open($settings['algorithm'], '', $settings['mode'], '');
@@ -145,11 +144,10 @@ class Util
         }
 
         //Merge settings with defaults
-        $defaults = array(
+        $settings = array_merge(array(
             'algorithm' => MCRYPT_RIJNDAEL_256,
             'mode' => MCRYPT_MODE_CBC
-        );
-        $settings = array_merge($defaults, $settings);
+        ), $settings);
 
         //Get module
         $module = mcrypt_module_open($settings['algorithm'], '', $settings['mode'], '');
@@ -176,32 +174,6 @@ class Util
     }
 
     /**
-     * Serialize Response cookies into raw HTTP header
-     * @param  \Slim\Http\Headers $headers The Response headers
-     * @param  \Slim\Http\Cookies $cookies The Response cookies
-     * @param  array              $config  The Slim app settings
-     */
-    public static function serializeCookies(\Slim\Http\Headers &$headers, \Slim\Http\Cookies $cookies, array $config)
-    {
-        if ($config['cookies.encrypt']) {
-            foreach ($cookies as $name => $settings) {
-                $settings['value'] = static::encodeSecureCookie(
-                    $settings['value'],
-                    $settings['expires'],
-                    $config['cookies.secret_key'],
-                    $config['cookies.cipher'],
-                    $config['cookies.cipher_mode']
-                );
-                static::setCookieHeader($headers, $name, $settings);
-            }
-        } else {
-            foreach ($cookies as $name => $settings) {
-                static::setCookieHeader($headers, $name, $settings);
-            }
-        }
-    }
-
-    /**
      * Encode secure cookie value
      *
      * This method will create the secure value of an HTTP cookie. The
@@ -218,18 +190,11 @@ class Util
     public static function encodeSecureCookie($value, $expires, $secret, $algorithm, $mode)
     {
         $key = hash_hmac('sha1', $expires, $secret);
-        $iv = self::getIv($expires, $secret);
-        $secureString = base64_encode(
-            self::encrypt(
-                $value,
-                $key,
-                $iv,
-                array(
-                    'algorithm' => $algorithm,
-                    'mode' => $mode
-                )
-            )
-        );
+        $iv = self::get_iv($expires, $secret);
+        $secureString = base64_encode(self::encrypt($value, $key, $iv, array(
+            'algorithm' => $algorithm,
+            'mode' => $mode
+        )));
         $verificationString = hash_hmac('sha1', $expires . $value, $key);
 
         return implode('|', array($expires, $secureString, $verificationString));
@@ -255,16 +220,11 @@ class Util
             $value = explode('|', $value);
             if (count($value) === 3 && ((int) $value[0] === 0 || (int) $value[0] > time())) {
                 $key = hash_hmac('sha1', $value[0], $secret);
-                $iv = self::getIv($value[0], $secret);
-                $data = self::decrypt(
-                    base64_decode($value[1]),
-                    $key,
-                    $iv,
-                    array(
-                        'algorithm' => $algorithm,
-                        'mode' => $mode
-                    )
-                );
+                $iv = self::get_iv($value[0], $secret);
+                $data = self::decrypt(base64_decode($value[1]), $key, $iv, array(
+                    'algorithm' => $algorithm,
+                    'mode' => $mode
+                ));
                 $verificationString = hash_hmac('sha1', $value[0] . $data, $key);
                 if ($verificationString === $value[2]) {
                     return $data;
@@ -418,7 +378,7 @@ class Util
      * @param  string $secret  The secret key used to hash the cookie value
      * @return binary string with length 40
      */
-    private static function getIv($expires, $secret)
+    private static function get_iv($expires, $secret)
     {
         $data1 = hash_hmac('sha1', 'a'.$expires.'b', $secret);
         $data2 = hash_hmac('sha1', 'z'.$expires.'y', $secret);

@@ -69,22 +69,22 @@ class Slim
     /**
      * @var \Slim\Http\Request
      */
-    public $request;
+    protected $request;
 
     /**
      * @var \Slim\Http\Response
      */
-    public $response;
+    protected $response;
 
     /**
      * @var \Slim\Router
      */
-    public $router;
+    protected $router;
 
     /**
      * @var \Slim\View
      */
-    public $view;
+    protected $view;
 
     /**
      * @var array
@@ -255,7 +255,6 @@ class Slim
             'templates.path' => './templates',
             'view' => '\Slim\View',
             // Cookies
-            'cookies.encrypt' => false,
             'cookies.lifetime' => '20 minutes',
             'cookies.path' => '/',
             'cookies.domain' => null,
@@ -484,40 +483,6 @@ class Slim
     }
 
     /**
-     * Route Groups
-     *
-     * This method accepts a route pattern and a callback all Route
-     * declarations in the callback will be prepended by the group(s)
-     * that it is in
-     *
-     * Accepts the same paramters as a standard route so:
-     * (pattern, middleware1, middleware2, ..., $callback)
-     */
-    public function group()
-    {
-        $args = func_get_args();
-        $pattern = array_shift($args);
-        $callable = array_pop($args);
-        $this->router->pushGroup($pattern, $args);
-        if (is_callable($callable)) {
-            call_user_func($callable);
-        }
-        $this->router->popGroup();
-    }
-
-    /*
-     * Add route for any HTTP method
-     * @see    mapRoute()
-     * @return \Slim\Route
-     */
-    public function any()
-    {
-        $args = func_get_args();
-
-        return $this->mapRoute($args)->via("ANY");
-    }
-
-    /**
      * Not Found Handler
      *
      * This method defines or invokes the application-wide Not Found handler.
@@ -538,13 +503,12 @@ class Slim
      *
      * @param  mixed $callable Anything that returns true for is_callable()
      */
-    public function notFound ($callable = null)
-    {
-        if (is_callable($callable)) {
+    public function notFound( $callable = null ) {
+        if ( is_callable($callable) ) {
             $this->notFound = $callable;
         } else {
             ob_start();
-            if (is_callable($this->notFound)) {
+            if ( is_callable($this->notFound) ) {
                 call_user_func($this->notFound);
             } else {
                 call_user_func(array($this, 'defaultNotFound'));
@@ -602,7 +566,7 @@ class Slim
     protected function callErrorHandler($argument = null)
     {
         ob_start();
-        if (is_callable($this->error)) {
+        if ( is_callable($this->error) ) {
             call_user_func_array($this->error, array($argument));
         } else {
             call_user_func_array(array($this, 'defaultError'), array($argument));
@@ -728,8 +692,8 @@ class Slim
     public function lastModified($time)
     {
         if (is_integer($time)) {
-            $this->response->headers->set('Last-Modified', date(DATE_RFC1123, $time));
-            if ($time === strtotime($this->request->headers->get('IF_MODIFIED_SINCE'))) {
+            $this->response['Last-Modified'] = date(DATE_RFC1123, $time);
+            if ($time === strtotime($this->request->headers('IF_MODIFIED_SINCE'))) {
                 $this->halt(304);
             }
         } else {
@@ -762,13 +726,11 @@ class Slim
 
         //Set etag value
         $value = '"' . $value . '"';
-        if ($type === 'weak') {
-            $value = 'W/'.$value;
-        }
+        if ($type === 'weak') $value = 'W/'.$value;
         $this->response['ETag'] = $value;
 
         //Check conditional GET
-        if ($etagsHeader = $this->request->headers->get('IF_NONE_MATCH')) {
+        if ($etagsHeader = $this->request->headers('IF_NONE_MATCH')) {
             $etags = preg_split('@\s*,\s*@', $etagsHeader);
             if (in_array($value, $etags) || in_array('*', $etags)) {
                 $this->halt(304);
@@ -794,7 +756,7 @@ class Slim
         if (is_string($time)) {
             $time = strtotime($time);
         }
-        $this->response->headers->set('Expires', gmdate(DATE_RFC1123, $time));
+        $this->response['Expires'] = gmdate(DATE_RFC1123, $time);
     }
 
     /********************************************************************************
@@ -802,7 +764,7 @@ class Slim
     *******************************************************************************/
 
     /**
-     * Set HTTP cookie to be sent with the HTTP response
+     * Set unencrypted HTTP cookie
      *
      * @param string     $name      The cookie name
      * @param string     $value     The cookie value
@@ -817,19 +779,18 @@ class Slim
      */
     public function setCookie($name, $value, $time = null, $path = null, $domain = null, $secure = null, $httponly = null)
     {
-        $settings = array(
+        $this->response->setCookie($name, array(
             'value' => $value,
             'expires' => is_null($time) ? $this->config('cookies.lifetime') : $time,
             'path' => is_null($path) ? $this->config('cookies.path') : $path,
             'domain' => is_null($domain) ? $this->config('cookies.domain') : $domain,
             'secure' => is_null($secure) ? $this->config('cookies.secure') : $secure,
             'httponly' => is_null($httponly) ? $this->config('cookies.httponly') : $httponly
-        );
-        $this->response->cookies->set($name, $settings);
+        ));
     }
 
     /**
-     * Get value of HTTP cookie from the current HTTP request
+     * Get value of unencrypted HTTP cookie
      *
      * Return the value of a cookie from the current HTTP request,
      * or return NULL if cookie does not exist. Cookies created during
@@ -838,30 +799,12 @@ class Slim
      * @param  string      $name
      * @return string|null
      */
-    public function getCookie($name, $deleteIfInvalid = true)
+    public function getCookie($name)
     {
-        // Get cookie value
-        $value = $this->request->cookies->get($name);
-
-        // Decode if encrypted
-        if ($this->config('cookies.encrypt')) {
-            $value = \Slim\Http\Util::decodeSecureCookie(
-                $value,
-                $this->config('cookies.secret_key'),
-                $this->config('cookies.cipher'),
-                $this->config('cookies.cipher_mode')
-            );
-            if ($value === false && $deleteIfInvalid) {
-                $this->deleteCookie($name);
-            }
-        }
-
-        return $value;
+        return $this->request->cookies($name);
     }
 
     /**
-     * DEPRECATION WARNING! Use `setCookie` with the `cookies.encrypt` app setting set to `true`.
-     *
      * Set encrypted HTTP cookie
      *
      * @param string    $name       The cookie name
@@ -875,14 +818,23 @@ class Slim
      *                              HTTPS connection from the client
      * @param  bool     $httponly   When TRUE the cookie will be made accessible only through the HTTP protocol
      */
-    public function setEncryptedCookie($name, $value, $expires = null, $path = null, $domain = null, $secure = false, $httponly = false)
+    public function setEncryptedCookie($name, $value, $expires = null, $path = null, $domain = null, $secure = null, $httponly = null)
     {
-        $this->setCookie($name, $value, $expires, $path, $domain, $secure, $httponly);
+        $expires = is_null($expires) ? $this->config('cookies.lifetime') : $expires;
+        if (is_string($expires)) {
+            $expires = strtotime($expires);
+        }
+        $secureValue = \Slim\Http\Util::encodeSecureCookie(
+            $value,
+            $expires,
+            $this->config('cookies.secret_key'),
+            $this->config('cookies.cipher'),
+            $this->config('cookies.cipher_mode')
+        );
+        $this->setCookie($name, $secureValue, $expires, $path, $domain, $secure, $httponly);
     }
 
     /**
-     * DEPRECATION WARNING! Use `getCookie` with the `cookies.encrypt` app setting set to `true`.
-     *
      * Get value of encrypted HTTP cookie
      *
      * Return the value of an encrypted cookie from the current HTTP request,
@@ -894,7 +846,17 @@ class Slim
      */
     public function getEncryptedCookie($name, $deleteIfInvalid = true)
     {
-        return $this->getCookie($name, $deleteIfInvalid);
+        $value = \Slim\Http\Util::decodeSecureCookie(
+            $this->request->cookies($name),
+            $this->config('cookies.secret_key'),
+            $this->config('cookies.cipher'),
+            $this->config('cookies.cipher_mode')
+        );
+        if ($value === false && $deleteIfInvalid) {
+            $this->deleteCookie($name);
+        }
+
+        return $value;
     }
 
     /**
@@ -915,13 +877,12 @@ class Slim
      */
     public function deleteCookie($name, $path = null, $domain = null, $secure = null, $httponly = null)
     {
-        $settings = array(
+        $this->response->deleteCookie($name, array(
             'domain' => is_null($domain) ? $this->config('cookies.domain') : $domain,
             'path' => is_null($path) ? $this->config('cookies.path') : $path,
             'secure' => is_null($secure) ? $this->config('cookies.secure') : $secure,
             'httponly' => is_null($httponly) ? $this->config('cookies.httponly') : $httponly
-        );
-        $this->response->cookies->remove($name, $settings);
+        ));
     }
 
     /********************************************************************************
@@ -1007,7 +968,7 @@ class Slim
      */
     public function contentType($type)
     {
-        $this->response->headers->set('Content-Type', $type);
+        $this->response['Content-Type'] = $type;
     }
 
     /**
@@ -1016,7 +977,7 @@ class Slim
      */
     public function status($code)
     {
-        $this->response->setStatus($code);
+        $this->response->status($code);
     }
 
     /**
@@ -1213,10 +1174,7 @@ class Slim
         $this->middleware[0]->call();
 
         //Fetch status, header, and body
-        list($status, $headers, $body) = $this->response->finalize();
-
-        // Serialize cookies (with optional encryption)
-        \Slim\Http\Util::serializeCookies($headers, $this->response->cookies, $this->settings);
+        list($status, $header, $body) = $this->response->finalize();
 
         //Send headers
         if (headers_sent() === false) {
@@ -1228,7 +1186,7 @@ class Slim
             }
 
             //Send headers
-            foreach ($headers as $name => $value) {
+            foreach ($header as $name => $value) {
                 $hValues = explode("\n", $value);
                 foreach ($hValues as $hVal) {
                     header("$name: $hVal", false);
@@ -1271,7 +1229,7 @@ class Slim
                 }
             }
             if (!$dispatched) {
-                $this->notFound();
+               $this->notFound();
             }
             $this->applyHook('slim.after.router');
             $this->stop();

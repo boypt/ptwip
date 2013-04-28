@@ -64,17 +64,11 @@ class Router
     protected $matchedRoutes;
 
     /**
-     * @var array Array containing all route groups
-     */
-    protected $routeGroups;
-
-    /**
      * Constructor
      */
     public function __construct()
     {
         $this->routes = array();
-        $this->routeGroups = array();
     }
 
     /**
@@ -106,7 +100,7 @@ class Router
         if ($reload || is_null($this->matchedRoutes)) {
             $this->matchedRoutes = array();
             foreach ($this->routes as $route) {
-                if (!$route->supportsHttpMethod($httpMethod) && !$route->supportsHttpMethod("ANY")) {
+                if (!$route->supportsHttpMethod($httpMethod)) {
                     continue;
                 }
 
@@ -127,61 +121,10 @@ class Router
      */
     public function map($pattern, $callable)
     {
-        list($groupPattern, $groupMiddleware) = $this->processGroups();
-        if (count($this->routeGroups) > 0) {
-            $pattern = $groupPattern . ltrim($pattern, '/');
-        }
         $route = new \Slim\Route($pattern, $callable);
         $this->routes[] = $route;
 
-        if (count($this->routeGroups) > 0) {
-            foreach ($groupMiddleware as $middlewareArr) {
-                if (is_array($middlewareArr)) {
-                    foreach ($middlewareArr as $middleware) {
-                        $route->setMiddleware($middleware);
-                    }
-                }
-            }
-        }
-
         return $route;
-    }
-
-    /**
-     * A helper function for proccesing the group's pattern and middleware
-     * @return array Returns an array with the elements: pattern, middlewareArr
-     */
-    protected function processGroups()
-    {
-        $pattern = "/";
-        $middleware = array();
-        foreach ($this->routeGroups as $group) {
-            $k = key($group);
-            $pattern .= $k . "/";
-            array_push($middleware, $group[$k]);
-        }
-        return array($pattern, $middleware);
-    }
-
-    /**
-     * Add a route group to the array
-     * @param  string     $group      The group pattern (ie. "/books/:id")
-     * @param  array|null $middleware Optional parameter array of middleware 
-     * @return int        The index of the new group
-     */
-    public function pushGroup($group, $middleware = null)
-    {
-        $group = trim($group, '/');
-        return array_push($this->routeGroups, array($group => $middleware));
-    }
-
-    /**
-     * Removes the last route group from the array
-     * @return bool    True if successful, else False
-     */
-    public function popGroup()
-    {
-        return (array_pop($this->routeGroups) !== null);
     }
 
     /**
@@ -208,14 +151,27 @@ class Router
 
     /**
      * Dispatch route
-     * @param  \Slim\Route  $route  The route to dispatch
-     * @return bool                 True if route dispatched successfully, else false
+     *
+     * This method invokes the route object's callable. If middleware is
+     * registered for the route, each callable middleware is invoked in
+     * the order specified.
+     *
+     * @param  \Slim\Route                  $route  The route object
+     * @return bool                         Was route callable invoked successfully?
      */
     public function dispatch(\Slim\Route $route)
     {
         $this->currentRoute = $route;
 
-        return ($route->dispatch() !== false);
+        //Invoke middleware
+        foreach ($route->getMiddleware() as $mw) {
+            call_user_func_array($mw, array($route));
+        }
+
+        //Invoke callable
+        call_user_func_array($route->getCallable(), array_values($route->getParams()));
+
+        return true;
     }
 
     /**
