@@ -56,7 +56,19 @@ class PTCurl {
 
         global $log;
         $log->debug("Curl.obj \n" . print_r($this, true));
+
+        /*
+curl_setopt($this->ch, CURLOPT_VERBOSE, true);
+$verbose = fopen('/tmp/curl.log', 'a+');
+curl_setopt($this->ch, CURLOPT_STDERR, $verbose);
+         */
+
         $resp = curl_exec($this->ch);
+
+        /*
+fclose($verbose);
+         */
+
         if ($resp) {
             list($headers, $body) = explode("\r\n\r\n", $resp, 2);
             $this->response_info = curl_getinfo($this->ch);

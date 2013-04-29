@@ -54,25 +54,68 @@ $app->get('/robots.txt', function () use ($app) {
     $resp->body("User-agent: *\nDisallow: /\n");
 });
 
+$app->map('/t/1/:resource+', function($resource) use ($app) {
+    $app->halt(410, "Gone. Twitter has had their API v1 retired.");
+})->via('GET', 'POST', 'DELETE');
+
+
+$update_with_media_proc = function () use ($app) {
+    $req = $app->request();
+    $resp = $app->response();
+    $params = $req->params();
+
+    if(strpos($req->getContentType(), 'multipart/form-data') === false)
+        $app->halt(403, 'No, come with some media later.');
+
+    $resource = explode('/', '1.1/statuses/update_with_media.json');
+    $params = $req->params();
+
+    $pt = new PTwip( $req->getMethod(), $resource,
+        $req->headers(), $params);
+
+    $pt->prepare_headers();
+    $pt->proccess_media_upload_request();
+    $pt->t_mode_load_bullet();
+    $pt->t_mode_shoot_with_media();
+    $pt->cook_the_prey();
+
+    $code = $pt->response_info['http_code'];
+
+    if($code < 200) {
+        $app->halt(500);
+    }
+
+    $resp->status($code);
+    $resp->body($pt->response_body);
+    foreach($pt->response_headers as $k => $v) $resp[$k] = $v;
+
+};
+
+$app->post('/t/1.1/statuses/update_with_media.json', $update_with_media_proc);
+$app->post('/t/statuses/update_with_media.json', $update_with_media_proc);
+
 $app->map('/t/:resource+', function($resource) use ($app) {
     $req = $app->request();
+    $resp = $app->response();
     $params = $req->params();
-    $pt = new PTwip(
-        $req->getMethod(),
-        $resource,
-        $req->headers(),
-        $params
-    );
 
-    $api_resp = $pt->t_mode_transfer();
+    $pt = new PTwip( $req->getMethod(), $resource,
+        $req->headers(), $params);
 
-    // copy remote response to custom
-    if($api_resp !== false) {
-        $resp = $app->response();
-        $resp->status($pt->response_info['http_code']);
-        foreach($pt->response_headers as $k => $v) $resp[$k] = $v;
-        $resp->body($pt->response_body);
+    $pt->prepare_headers();
+    $pt->t_mode_load_bullet();
+    $pt->t_mode_shoot();
+    $pt->cook_the_prey();
+
+    $code = $pt->response_info['http_code'];
+
+    if($code < 200) {
+        $app->halt(500, 'Things got wrong on asking for the API server. See log.');
     }
+
+    $resp->status($code);
+    $resp->body($pt->response_body);
+    foreach($pt->response_headers as $k => $v) $resp[$k] = $v;
 
 })->via('GET', 'POST');
 

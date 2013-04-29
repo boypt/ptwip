@@ -19,7 +19,7 @@ class PTwip {
         $this->headers = $headers;
         $this->params = $params;
 
-        if(in_array($resource[0], array("1.1", "1", "oauth")))
+        if(in_array($resource[0], array("1.1", "oauth")))
             $this->api_ver = array_shift($resource);
         else $this->api_ver = API_VERSION;
 
@@ -29,48 +29,56 @@ class PTwip {
         $log->debug("ptwip class init: ".print_r($this, true));
     }
 
-    private function proccess_media_upload_request() {
-        if(strpos(end($this->resource), 'update_with_media') !== false &&
-            strpos(@$this->headers['CONTENT_TYPE'], 'multipart/form-data') !== false &&
-            $this->method === 'POST' &&
-            count($_FILES) > 0 ) {
+    public function proccess_media_upload_request() {
+        global $log;
+        if( count($_FILES) > 0 ) {
 
             $media = @$_FILES['media'];
-            if(is_array($media['tmp_name'])) $fn = $media['tmp_name'][0];
-            else $fn = $media['tmp_name'];
-
+            $fn = is_array($media['tmp_name']) ? $media['tmp_name'][0] : $media['tmp_name'];
             $this->params["media"] = '@' . $fn;
-            unset($forward_hdr['CONTENT_TYPE']);
-            $this->method = 'POST_UPLOAD';
+
+            $log->debug("params .... " . print_r($this->params, true));
+            unset($this->forward_headers['CONTENT_TYPE']);
         }
     }
 
-    public function t_mode_transfer() {
-
+    public function prepare_headers() {
         foreach($this->forward_headers_keys as $h) {
             if(array_key_exists($h, $this->headers))
                 $this->forward_headers[$h] = $this->headers[$h];
         }
+    }
 
-        $this->proccess_media_upload_request();
+    public function t_mode_load_bullet() {
         $this->curl = $curl = new PTCurl(
             $this->api_url,
             $this->params,
-            $this->forward_headers);
+            $this->forward_headers
+        );
+    }
 
+    public function t_mode_shoot () {
         switch($this->method) {
             case 'POST':
-                $resp = $curl->http_post();
-                break;
-            case 'POST_UPLOAD':
-                $resp = $curl->http_upload();
+                $this->curl->http_post();
                 break;
             case 'GET':
-                $resp = $curl->http_get();
+                $this->curl->http_get();
                 break;
             default:
-                return false;
+                //return false;
+                //raise
         }
+    }
+
+
+    public function t_mode_shoot_with_media () {
+        $this->curl->http_upload();
+    }
+
+    public function cook_the_prey() {
+
+        $curl = $this->curl;
 
         $this->response_info = $curl->response_info;
         $this->response_body = $curl->response_body;
@@ -78,11 +86,10 @@ class PTwip {
         $hdr = $curl->response_headers;
         if(!is_array($hdr) || count($hdr) === 0) 
             $hdr = array();
-
         $this->response_headers = $hdr;
+
         global $log;
         $log->debug("ptwip t_mode_transfer end: \n" . print_r($this, true));
-        return $resp;
     }
 }
 
