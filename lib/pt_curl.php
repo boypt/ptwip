@@ -13,6 +13,7 @@ class PTCurl {
     public $response_info = null;
     public $response_headers = null;
     public $response_headers_raw = array();
+    public $verbose = null;
 
     function __construct($url, $params = null, $headers = null) {
         $this->url = $url;
@@ -55,19 +56,16 @@ class PTCurl {
     public function go() {
 
         global $log;
-        $log->debug("Curl.obj \n" . print_r($this, true));
 
-        /*
-curl_setopt($this->ch, CURLOPT_VERBOSE, true);
-$verbose = fopen('/tmp/curl.log', 'a+');
-curl_setopt($this->ch, CURLOPT_STDERR, $verbose);
-         */
+        $app = \Slim\Slim::getInstance();
+        if($app->getMode() === 'development') {
+            $verbose = fopen('php://temp', 'rw+');
+            curl_setopt($this->ch, CURLOPT_VERBOSE, true);
+            curl_setopt($this->ch, CURLOPT_STDERR, $verbose);
+            $log->debug("dev mode, VERBOSE");
+        }
 
         $resp = curl_exec($this->ch);
-
-        /*
-fclose($verbose);
-         */
 
         if ($resp) {
             list($headers, $body) = explode("\r\n\r\n", $resp, 2);
@@ -81,6 +79,11 @@ fclose($verbose);
         }
 
         curl_close($this->ch);
+
+        if(isset($verbose) && rewind($verbose)) {
+            $this->verbose = stream_get_contents($verbose);
+            fclose($verbose);
+        }
     }
 
     public function http_get() {

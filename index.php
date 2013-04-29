@@ -12,27 +12,30 @@ $app = new \Slim\Slim(array(
 ));
 
 // Only invoked if mode is "production"
-/*
 $app->configureMode('production', function () use ($app) {
     $app->config(array(
         'log.enable' => true,
+        'log.level' => \Slim\Log::ERROR,
         'debug' => false
     ));
 });
- */
 
 // Only invoked if mode is "development"
 $app->configureMode('development', function () use ($app) {
     $app->config(array(
-        'debug' => true,
+        'debug' => false,
         'log.level' => \Slim\Log::DEBUG,
         'log.enabled' => true,
     ));
 
     $log = $app->getLog();
-    $log->setWriter(new \Slim\Extras\Log\DateTimeFileWriter(array('path' => '/tmp')));
+    $log->setWriter(new \Slim\Extras\Log\DateTimeFileWriter(array(
+        'name_format' => '\p\t\w\i\p-Y-m-d',
+        'path' => '/tmp'
+    )));
 
     if ( substr( @$_SERVER['SERVER_SOFTWARE'], 0, 3 ) === "PHP" ){
+        $log->info('PHP Dev Server mode, applied fix.');
         $app->hook('slim.before.router', function () use ($app) {
             $env = $app->environment();
             if($env['PATH_INFO'] === '/' && $env['SCRIPT_NAME'] !== basename(__FILE__)) {
@@ -43,6 +46,10 @@ $app->configureMode('development', function () use ($app) {
 });
 
 $log = $app->getLog();
+
+$app->error(function (\Exception $e) use ($app) {
+    $app->halt(500, 'Things got wrong on PTwip. See log.');
+});
 
 $app->get('/info', function() {
     phpinfo();
@@ -60,12 +67,14 @@ $app->map('/t/1/:resource+', function($resource) use ($app) {
 
 
 $update_with_media_proc = function () use ($app) {
+
     $req = $app->request();
     $resp = $app->response();
     $params = $req->params();
 
-    if(strpos($req->getContentType(), 'multipart/form-data') === false)
+    if(strpos($req->getContentType(), 'multipart/form-data') === false) {
         $app->halt(403, 'No, come with some media later.');
+    }
 
     $resource = explode('/', '1.1/statuses/update_with_media.json');
     $params = $req->params();
@@ -81,8 +90,9 @@ $update_with_media_proc = function () use ($app) {
 
     $code = $pt->response_info['http_code'];
 
-    if($code < 200) {
-        $app->halt(500);
+    if(!isset($code) || $code < 200) {
+        $log->error('500. API not working to us.');
+        $app->halt(500, 'Things got wrong on asking for the API server. See log.');
     }
 
     $resp->status($code);
@@ -98,6 +108,7 @@ $app->map('/t/:resource+', function($resource) use ($app) {
     $req = $app->request();
     $resp = $app->response();
     $params = $req->params();
+    global $log;
 
     $pt = new PTwip( $req->getMethod(), $resource,
         $req->headers(), $params);
@@ -107,9 +118,10 @@ $app->map('/t/:resource+', function($resource) use ($app) {
     $pt->t_mode_shoot();
     $pt->cook_the_prey();
 
-    $code = $pt->response_info['http_code'];
+    $code = @$pt->response_info['http_code'];
 
-    if($code < 200) {
+    if(!isset($code) || $code < 200) {
+        $log->error('500. API not working to us.');
         $app->halt(500, 'Things got wrong on asking for the API server. See log.');
     }
 

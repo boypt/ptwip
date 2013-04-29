@@ -26,7 +26,7 @@ class PTwip {
         $this->api_url = self::PARENT_API . $this->api_ver . '/' . implode('/', $resource);
 
         global $log;
-        $log->debug("ptwip class init: ".print_r($this, true));
+        //$log->debug("ptwip class init: ".print_r($this, true));
     }
 
     public function proccess_media_upload_request() {
@@ -37,7 +37,6 @@ class PTwip {
             $fn = is_array($media['tmp_name']) ? $media['tmp_name'][0] : $media['tmp_name'];
             $this->params["media"] = '@' . $fn;
 
-            $log->debug("params .... " . print_r($this->params, true));
             unset($this->forward_headers['CONTENT_TYPE']);
         }
     }
