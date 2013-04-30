@@ -8,7 +8,7 @@ require_once PHPBASE.'/lib/ptwip.class.php';
 
 // Set the current mode
 $app = new \Slim\Slim(array(
-    'mode' => defined('DEV_MODE') && DEV_MODE ? 'development':'production';
+    'mode' => defined('DEV_MODE') && DEV_MODE ? 'development':'production'
 ));
 
 // Only invoked if mode is "production"
