@@ -25,7 +25,7 @@ class PTCurl {
     private function set_common_options() {
 
         curl_setopt_array($this->ch, array(
-            CURLOPT_FOLLOWLOCATION => true,
+            //CURLOPT_FOLLOWLOCATION => true,
             CURLOPT_HEADER => true,
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_TIMEOUT => 10,

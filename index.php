@@ -8,7 +8,7 @@ require_once PHPBASE.'/lib/ptwip.class.php';
 
 // Set the current mode
 $app = new \Slim\Slim(array(
-    'mode' => 'development'
+    'mode' => defined('DEV_MODE') && DEV_MODE ? 'development':'production';
 ));
 
 // Only invoked if mode is "production"
@@ -35,13 +35,13 @@ $app->configureMode('development', function () use ($app) {
     )));
 
     if ( substr( @$_SERVER['SERVER_SOFTWARE'], 0, 3 ) === "PHP" ){
-        $log->info('PHP Dev Server mode, applied fix.');
         $app->hook('slim.before.router', function () use ($app) {
             $env = $app->environment();
             if($env['PATH_INFO'] === '/' && $env['SCRIPT_NAME'] !== basename(__FILE__)) {
                 $env['PATH_INFO'] = $env['SCRIPT_NAME'];
             }
         });
+        $log->info('PHP Dev Server mode, applied fix.');
     }
 });
 
